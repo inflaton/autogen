@@ -16,6 +16,7 @@ from autogen_core.components.models import (
     SystemMessage,
     UserMessage,
 )
+from autogen_ext.models import AzureOpenAIChatCompletionClient, OpenAIChatCompletionClient
 from .messages import (
     AgentEvent,
     AssistantContent,
@@ -29,7 +30,7 @@ from .messages import (
 @dataclass
 class OllamaConfig:
     base_url: str = "http://localhost:11434"
-    model: str = "llama3.2-vision"
+    model: str = os.getenv("OLLAMA_MODEL", "llama3.2-vision")
     temperature: float = 0.7
     top_p: float = 0.95
 
@@ -173,24 +174,59 @@ def message_content_to_str(
     else:
         raise AssertionError("Unexpected response type.")
 
+ENVIRON_KEY_CHAT_COMPLETION_PROVIDER = "CHAT_COMPLETION_PROVIDER"
+ENVIRON_KEY_CHAT_COMPLETION_KWARGS_JSON = "CHAT_COMPLETION_KWARGS_JSON"
+
+# The singleton _default_azure_ad_token_provider, which will be created if needed
+_default_azure_ad_token_provider = None
+
 def create_completion_client_from_env(env: Optional[Dict[str, str]] = None, **kwargs: Any) -> ChatCompletionClient:
     """Create a model client based on environment variables."""
     if env is None:
         env = dict()
         env.update(os.environ)
 
-    _kwargs = json.loads(env.get("MODEL_CONFIG", "{}"))
+    _kwargs = json.loads(env.get(ENVIRON_KEY_CHAT_COMPLETION_KWARGS_JSON, "{}"))
     _kwargs.update(kwargs)
 
-    return OllamaChatCompletionClient(
-        config=OllamaConfig(
-            base_url=_kwargs.pop("base_url", OllamaConfig.base_url),
-            model=_kwargs.pop("model", OllamaConfig.model),
-            temperature=_kwargs.pop("temperature", OllamaConfig.temperature),
-            top_p=_kwargs.pop("top_p", OllamaConfig.top_p),
-        ),
-        **_kwargs
-    )
+    # If model capabilities were provided, deserialize them as well
+    if "model_capabilities" in _kwargs:
+        _kwargs["model_capabilities"] = ModelCapabilities(
+            vision=_kwargs["model_capabilities"].get("vision"),
+            function_calling=_kwargs["model_capabilities"].get("function_calling"),
+            json_output=_kwargs["model_capabilities"].get("json_output"),
+        )
+
+    # Figure out what provider we are using. Default to OpenAI
+    _provider = env.get(ENVIRON_KEY_CHAT_COMPLETION_PROVIDER, "openai").lower().strip()
+
+    # Instantiate the correct client
+    if _provider == "openai":
+        if "model" not in _kwargs:
+            _kwargs["model"] = "gpt-4o"
+        return OpenAIChatCompletionClient(**_kwargs)  # type: ignore
+    elif _provider == "azure":
+        if _kwargs.get("azure_ad_token_provider", "").lower() == "default":
+            if _default_azure_ad_token_provider is None:
+                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+
+                _default_azure_ad_token_provider = get_bearer_token_provider(
+                    DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+                )
+            _kwargs["azure_ad_token_provider"] = _default_azure_ad_token_provider
+        return AzureOpenAIChatCompletionClient(**_kwargs)  # type: ignore
+    elif _provider == "ollama":
+        return OllamaChatCompletionClient(
+            config=OllamaConfig(
+                base_url=_kwargs.pop("base_url", OllamaConfig.base_url),
+                model=_kwargs.pop("model", OllamaConfig.model),
+                temperature=_kwargs.pop("temperature", OllamaConfig.temperature),
+                top_p=_kwargs.pop("top_p", OllamaConfig.top_p),
+            ),
+            **_kwargs
+        )
+    else:
+        raise ValueError(f"Unknown OAI provider '{_provider}'")
 
 class LogHandler(logging.FileHandler):
     """MagenticOne log event handler."""
