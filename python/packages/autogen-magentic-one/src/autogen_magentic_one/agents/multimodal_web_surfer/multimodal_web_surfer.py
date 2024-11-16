@@ -485,7 +485,7 @@ class MultimodalWebSurfer(BaseWorker):
 
         if self.to_save_screenshots:
             current_timestamp = "_" + int(time.time()).__str__()
-            screenshot_png_name = "screenshot_som" + current_timestamp + ".png"
+            screenshot_png_name = "screenshot" + current_timestamp + ".png"
             som_screenshot.save(os.path.join(self.debug_dir, screenshot_png_name))  # type: ignore
             self.logger.info(
                 WebSurferEvent(

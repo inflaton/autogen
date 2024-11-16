@@ -43,7 +43,7 @@ async def main() -> None:
     await actual_surfer.init(
         model_client=client,
         downloads_folder=os.getcwd(),
-        start_page="https://www.bing.com",
+        start_page="https://www.google.com",
         browser_channel="chromium",
     )
 

@@ -165,7 +165,7 @@ cython_debug/
 .DS_Store
 
 # Generated log files
-log.jsonl
+packages/autogen-magentic-one/log.jsonl
 
 # Jupyter notebooks executions in docs.
 docs/**/jupyter_execute

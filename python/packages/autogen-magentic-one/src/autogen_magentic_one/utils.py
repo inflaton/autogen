@@ -63,6 +63,7 @@ class OllamaChatCompletionClient(ChatCompletionClient):
             return 'user', str(msg)
 
     def process_message_content(self, content):
+        print("process_message_content:", content)
         text_parts = []
         images = []
         if isinstance(content, str):
